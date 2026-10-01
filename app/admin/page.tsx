@@ -2,13 +2,37 @@
 
 import GradientText from "../components/GradientText";
 import ExcelParser from "./utils/ExcelParser";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import FilePreviewTable from "../components/FilePreviewTable/FilePreviewTable";
 import uploadExcelToSupabase from "@/Service/reportService";
 
 export default function AdminPage() {
+  const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
+  // Guard: ถ้ายังไม่ได้ผ่านรหัสผ่าน ให้กลับไปหน้าหลัก
+  useEffect(() => {
+    const auth = sessionStorage.getItem("admin_auth");
+    if (auth === "true") {
+      setIsAuthorized(true);
+    } else {
+      router.replace("/");
+    }
+  }, [router]);
+
   const [tableDate, setTableData] = useState<Record<string, any>[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  // แสดง loading ขณะเช็ค auth
+  if (!isAuthorized) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-black">
+        <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-zinc-500 text-sm mt-3">กำลังตรวจสอบสิทธิ์...</p>
+      </div>
+    );
+  }
 
   const handleSaveData = async () => {
     if (tableDate.length === 0) {
