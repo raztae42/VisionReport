@@ -81,6 +81,7 @@ export default function Home() {
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
   const [pieMode, setPieMode] = useState<"pass_reject" | "reject_by_model" | "actual_defect">("pass_reject");
   const [weekOffset, setWeekOffset] = useState(0); // 0 = สัปดาห์ปัจจุบัน, -1 = สัปดาห์ก่อน, ...
+  const [monthOffset, setMonthOffset] = useState(0); // 0 = เดือนปัจจุบัน, -1 = เดือนก่อน, ...
 
   // State สำหรับ Pagination และ Modal ดูรูป
   const [currentPage, setCurrentPage] = useState(1);
@@ -398,13 +399,15 @@ export default function Home() {
     };
   }, [filteredReports]);
 
-  // 8. คำนวณสถิติประจำเดือนปัจจุบัน (Current Month Stats: Total, Pass, Reject, Avg Yield)
+  // 8. คำนวณสถิติประจำเดือนที่เลือก (Month Stats: Total, Pass, Reject, Avg Yield) รองรับเลื่อนดูย้อนหลัง
   const currentMonthStats = useMemo(() => {
     const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-    const currentMonthStr = String(currentMonth).padStart(2, "0");
-    const currentYearMonth = `${currentYear}-${currentMonthStr}`;
+    // คำนวณเดือน/ปีที่ต้องการดูจาก monthOffset
+    const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    const targetYear = targetDate.getFullYear();
+    const targetMonth = targetDate.getMonth() + 1;
+    const targetMonthStr = String(targetMonth).padStart(2, "0");
+    const targetYearMonth = `${targetYear}-${targetMonthStr}`;
 
     const monthNamesThai = [
       "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -415,20 +418,20 @@ export default function Home() {
       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ];
 
-    const monthLabel = `${monthNamesThai[currentMonth - 1] || ""} ${currentYear} (${monthNamesEng[currentMonth - 1] || ""})`;
+    const monthLabel = `${monthNamesThai[targetMonth - 1] || ""} ${targetYear} (${monthNamesEng[targetMonth - 1] || ""})`;
 
-    // กรองข้อมูลเฉพาะเดือนปัจจุบัน (และเคารพการค้นหา Model/PN และ Line หากผู้ใช้เลือก)
+    // กรองข้อมูลเฉพาะเดือนที่เลือก (และเคารพการค้นหา Model/PN และ Line หากผู้ใช้เลือก)
     const monthReports = (report || []).filter((row) => {
       if (!row.date) return false;
       const dateStr = String(row.date).trim();
       const parts = dateStr.split("-");
-      const isCurrentMonth =
-        dateStr.startsWith(currentYearMonth) ||
+      const isTargetMonth =
+        dateStr.startsWith(targetYearMonth) ||
         (parts.length >= 2 &&
-          parseInt(parts[0], 10) === currentYear &&
-          parseInt(parts[1], 10) === currentMonth);
+          parseInt(parts[0], 10) === targetYear &&
+          parseInt(parts[1], 10) === targetMonth);
 
-      if (!isCurrentMonth) return false;
+      if (!isTargetMonth) return false;
 
       const matchSearch =
         !searchTerm.trim() ||
@@ -455,6 +458,7 @@ export default function Home() {
 
     return {
       monthLabel,
+      isCurrentMonth: monthOffset === 0,
       totalInspected,
       totalPassed,
       totalReject,
@@ -464,7 +468,7 @@ export default function Home() {
       avgYield,
       count: monthReports.length,
     };
-  }, [report, searchTerm, selectedLine]);
+  }, [report, searchTerm, selectedLine, monthOffset]);
 
   // 9. แบ่งหน้าสำหรับตาราง (Pagination)
   const totalPages = Math.ceil((filteredReports?.length || 0) / pageSize) || 1;
@@ -591,19 +595,65 @@ export default function Home() {
           </div>
         </div>
 
-        {/* แถวที่ 1: สรุปยอดประจำเดือนปัจจุบัน (Current Month Summary Cards) */}
+        {/* แถวที่ 1: สรุปยอดประจำเดือน (Month Summary Cards) รองรับเลื่อนดูย้อนหลัง */}
         <div className="mb-6">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2.5">
               <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                {currentMonthStats.isCurrentMonth ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                  </>
+                ) : (
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-zinc-500"></span>
+                )}
               </span>
               <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                <span>ยอดรวมประจำเดือนปัจจุบัน (Current Month Overview)</span>
-                <span className="text-[11px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2.5 py-0.5 rounded-full">
-                  {currentMonthStats.monthLabel}
+                <span>
+                  {currentMonthStats.isCurrentMonth
+                    ? "ยอดรวมประจำเดือนปัจจุบัน (Current Month Overview)"
+                    : "ยอดรวมประจำเดือน (Monthly Overview)"}
                 </span>
+
+                {/* ปุ่มเลื่อนเดือน */}
+                <div className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setMonthOffset((prev) => prev - 1)}
+                    className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 hover:bg-purple-500/20 text-zinc-400 hover:text-purple-300 border border-white/10 hover:border-purple-500/30 transition-all cursor-pointer text-xs"
+                    title="ดูเดือนก่อนหน้า"
+                  >
+                    ◀
+                  </button>
+                  <span className="text-[11px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2.5 py-0.5 rounded-full select-none">
+                    {currentMonthStats.monthLabel}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setMonthOffset((prev) => Math.min(prev + 1, 0))}
+                    disabled={monthOffset >= 0}
+                    className={`w-6 h-6 flex items-center justify-center rounded-md border transition-all text-xs ${
+                      monthOffset >= 0
+                        ? "bg-white/[0.02] text-zinc-600 border-white/5 cursor-not-allowed"
+                        : "bg-white/5 hover:bg-purple-500/20 text-zinc-400 hover:text-purple-300 border-white/10 hover:border-purple-500/30 cursor-pointer"
+                    }`}
+                    title={monthOffset >= 0 ? "อยู่ที่เดือนปัจจุบันแล้ว" : "ดูเดือนถัดไป"}
+                  >
+                    ▶
+                  </button>
+                  {monthOffset !== 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMonthOffset(0)}
+                      className="ml-1 px-2 py-0.5 text-[10px] text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-md transition-all cursor-pointer"
+                      title="กลับไปเดือนปัจจุบัน"
+                    >
+                      วันนี้
+                    </button>
+                  )}
+                </div>
+
                 {selectedLine !== "ALL" && (
                   <span className="text-[11px] font-semibold bg-purple-600/30 text-purple-200 border border-purple-400/40 px-2 py-0.5 rounded-full shadow-sm">
                     Line {selectedLine}
@@ -612,7 +662,7 @@ export default function Home() {
               </h2>
             </div>
             <span className="text-xs text-zinc-400 font-mono">
-              พบ {currentMonthStats.count.toLocaleString()} รายการในเดือนนี้
+              พบ {currentMonthStats.count.toLocaleString()} รายการ{currentMonthStats.isCurrentMonth ? "ในเดือนนี้" : ""}
             </span>
           </div>
 
